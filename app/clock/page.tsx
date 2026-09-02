@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type Stage = "pin" | "override" | "result";
 
 export default function ClockPage() {
+  return (
+    <Suspense fallback={null}>
+      <ClockScreen />
+    </Suspense>
+  );
+}
+
+function ClockScreen() {
   const params = useSearchParams();
   const siteId = params.get("site");
 
