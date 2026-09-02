@@ -1,9 +1,10 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import { Settings, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-type Mode = "home" | "clock" | "relieve" | "return" | "settings";
+type Mode = "menu" | "clock" | "relieve" | "return" | "settings";
 type Stage = "pin" | "override" | "relieve_supervisor" | "relieve_guard" | "result";
 
 const supabase = createClient();
@@ -16,27 +17,10 @@ export default function ClockPage() {
   );
 }
 
-function usePortrait() {
-  const [isPortrait, setIsPortrait] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(orientation: portrait)");
-    const update = () => setIsPortrait(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    window.addEventListener("resize", update);
-    return () => {
-      mq.removeEventListener("change", update);
-      window.removeEventListener("resize", update);
-    };
-  }, []);
-  return isPortrait;
-}
-
 function ClockScreen() {
-  const isPortrait = usePortrait();
   const [sites, setSites] = useState<{ id: string; name: string }[]>([]);
   const [siteId, setSiteId] = useState<string | null>(null);
-  const [mode, setMode] = useState<Mode>("home");
+  const [mode, setMode] = useState<Mode>("menu");
   const [stage, setStage] = useState<Stage>("pin");
   const [pin, setPin] = useState("");
   const [supervisorPin, setSupervisorPin] = useState("");
@@ -48,8 +32,8 @@ function ClockScreen() {
     supabase.from("sites").select("id, name").then(({ data }) => setSites(data || []));
   }, []);
 
-  function goHome() {
-    setMode("home");
+  function goMenu() {
+    setMode("menu");
     setStage("pin");
     setPin("");
     setSupervisorPin("");
@@ -68,7 +52,7 @@ function ClockScreen() {
 
   useEffect(() => {
     if (stage === "result") {
-      const t = setTimeout(goHome, 3500);
+      const t = setTimeout(goMenu, 3500);
       return () => clearTimeout(t);
     }
   }, [stage]);
@@ -143,8 +127,6 @@ function ClockScreen() {
     else if (mode === "relieve" && stage === "relieve_guard") submitRelieve();
   }
 
-  const currentSiteName = sites.find((s) => s.id === siteId)?.name;
-
   // ---------- Site selection gate ----------
   if (!siteId) {
     return (
@@ -166,26 +148,34 @@ function ClockScreen() {
     );
   }
 
-  const navItems: { label: string; mode: Mode }[] = [
-    { label: "Home", mode: "home" },
-    { label: "Clock in / out", mode: "clock" },
-    { label: "Relieve a guard", mode: "relieve" },
-    { label: "Return from break", mode: "return" },
-    { label: "Settings", mode: "settings" },
-  ];
+  const currentSiteName = sites.find((s) => s.id === siteId)?.name;
 
-  const content = (
-    <>
+  return (
+    <main className="min-h-screen bg-bg flex flex-col items-center justify-center px-4 relative">
+      {/* Settings gear, top right */}
+      <button
+        onClick={() => (mode === "settings" ? goMenu() : openMode("settings"))}
+        className="absolute top-4 right-4 p-2 rounded-md text-text-muted hover:text-text-primary hover:bg-surface transition"
+        aria-label="Settings"
+      >
+        {mode === "settings" ? <X size={22} /> : <Settings size={22} />}
+      </button>
+
+      <p className="font-mono text-xs text-accent tracking-wide mb-1">Hatume Security</p>
+      <p className="text-text-muted text-xs mb-6">{currentSiteName}</p>
+
       {stage === "result" && message ? (
         <p className={`text-2xl font-semibold text-center px-4 ${message.tone === "success" ? "text-success" : message.tone === "warning" ? "text-warning" : "text-danger"}`}>
           {message.text}
         </p>
-      ) : mode === "home" ? (
-        <div className="text-center px-4">
-          <p className="text-text-secondary text-sm mb-2">Ready</p>
-          <h1 className="text-text-primary text-2xl font-semibold">
-            {isPortrait ? "Select an action below" : "Select an action from the left"}
-          </h1>
+      ) : mode === "menu" ? (
+        <div className="w-72 space-y-3">
+          <MenuButton label="Clock in / out" onClick={() => openMode("clock")} />
+          <MenuButton label="Relieve a guard (supervisor)" onClick={() => openMode("relieve")} />
+          <MenuButton label="Return from break" onClick={() => openMode("return")} />
+          <button onClick={() => setSiteId(null)} className="w-full text-text-muted text-xs underline pt-2">
+            Change site
+          </button>
         </div>
       ) : mode === "settings" ? (
         <SettingsPanel />
@@ -200,79 +190,16 @@ function ClockScreen() {
           onPress={press}
           onClear={(field) => ({ pin: setPin, supervisorPin: setSupervisorPin, guardPin: setGuardPin }[field])("")}
           onGo={handleGo}
-          onCancel={goHome}
+          onCancel={goMenu}
         />
       )}
-    </>
-  );
-
-  // ---------- Portrait: top bar + bottom tab nav ----------
-  if (isPortrait) {
-    return (
-      <div className="min-h-screen bg-bg flex flex-col">
-        <header className="px-4 py-4 border-b border-border flex items-center justify-between">
-          <div>
-            <p className="font-semibold text-text-primary text-sm">Hatume Security</p>
-            <p className="font-mono text-xs text-text-muted">{currentSiteName}</p>
-          </div>
-          <button onClick={() => setSiteId(null)} className="text-text-muted text-xs underline">
-            Change site
-          </button>
-        </header>
-
-        <main className="flex-1 flex items-center justify-center py-6">{content}</main>
-
-        <nav className="border-t border-border grid grid-cols-5">
-          {navItems.map((item) => (
-            <button
-              key={item.mode}
-              onClick={() => (item.mode === "home" ? goHome() : openMode(item.mode))}
-              className={`py-3 text-xs text-center ${mode === item.mode ? "text-accent" : "text-text-secondary"}`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-    );
-  }
-
-  // ---------- Landscape: sidebar layout ----------
-  return (
-    <div className="min-h-screen bg-bg flex">
-      <aside className="w-64 border-r border-border flex flex-col">
-        <div className="px-6 py-6 border-b border-border">
-          <p className="font-semibold text-text-primary">Hatume Security</p>
-          <p className="font-mono text-xs text-text-muted mt-1">{currentSiteName}</p>
-        </div>
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {navItems.map((item) => (
-            <NavItem
-              key={item.mode}
-              label={item.label}
-              active={mode === item.mode}
-              onClick={() => (item.mode === "home" ? goHome() : openMode(item.mode))}
-            />
-          ))}
-        </nav>
-        <div className="px-3 py-4 border-t border-border">
-          <NavItem label="Change site" onClick={() => setSiteId(null)} muted />
-        </div>
-      </aside>
-
-      <main className="flex-1 flex flex-col items-center justify-center px-4">{content}</main>
-    </div>
+    </main>
   );
 }
 
-function NavItem({ label, active, onClick, muted }: { label: string; active?: boolean; onClick: () => void; muted?: boolean }) {
+function MenuButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left px-3 py-3 rounded-md text-sm transition ${
-        active ? "bg-accent/10 text-accent" : muted ? "text-text-muted hover:bg-surface" : "text-text-secondary hover:bg-surface"
-      }`}
-    >
+    <button onClick={onClick} className="w-full py-5 rounded-lg bg-surface border border-border text-text-primary text-base hover:bg-surfaceRaised">
       {label}
     </button>
   );
@@ -359,6 +286,18 @@ function PinScreen({
   );
 }
 
+function Key({ children, onClick, disabled, accent }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; accent?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`h-20 rounded-lg text-lg font-mono border border-border transition disabled:opacity-40 ${accent ? "bg-accent text-bg font-semibold" : "bg-surface text-text-primary hover:bg-surfaceRaised"}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function SettingsPanel() {
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -369,9 +308,6 @@ function SettingsPanel() {
     setChecking(true);
     setChecked(false);
     try {
-      // Force a real network fetch of the current page, bypassing any cache,
-      // then hard-reload so the browser is guaranteed to run whatever is
-      // currently live on Vercel.
       await fetch(window.location.href, { cache: "reload" });
       setChecked(true);
       setTimeout(() => window.location.reload(), 800);
@@ -396,17 +332,5 @@ function SettingsPanel() {
         This tablet always loads the current live version — this just forces a fresh refresh in case the screen has been open a long time.
       </p>
     </div>
-  );
-}
-
-function Key({ children, onClick, disabled, accent }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; accent?: boolean }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`h-20 rounded-lg text-lg font-mono border border-border transition disabled:opacity-40 ${accent ? "bg-accent text-bg font-semibold" : "bg-surface text-text-primary hover:bg-surfaceRaised"}`}
-    >
-      {children}
-    </button>
   );
 }
