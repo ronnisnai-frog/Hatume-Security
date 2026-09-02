@@ -202,7 +202,8 @@ function ClockScreen() {
 
   return (
     <main className="min-h-screen bg-bg flex flex-col items-center justify-center px-4">
-      <p className="font-mono text-xs text-accent tracking-wide mb-2">Hatume Security</p>
+      <p className="font-mono text-xs text-accent tracking-wide mb-1">Hatume Security</p>
+      <p className="text-text-muted text-xs mb-4">{sites.find((s) => s.id === siteId)?.name}</p>
       <h1 className="text-text-primary text-lg mb-1">{heading}</h1>
       <p className="text-text-secondary text-sm mb-6">{sub}</p>
 
