@@ -130,20 +130,35 @@ function ClockScreen() {
   // ---------- Site selection gate ----------
   if (!siteId) {
     return (
-      <main className="min-h-screen bg-bg flex flex-col items-center justify-center px-4">
+      <main className="min-h-screen bg-bg flex flex-col items-center justify-center px-4 relative">
+        <button
+          onClick={() => (mode === "settings" ? setMode("menu") : setMode("settings"))}
+          className="absolute top-4 right-4 p-2 rounded-md text-text-muted hover:text-text-primary hover:bg-surface transition"
+          aria-label="Settings"
+        >
+          {mode === "settings" ? <X size={22} /> : <Settings size={22} />}
+        </button>
+
         <p className="font-mono text-xs text-accent tracking-wide mb-2">Hatume Security</p>
-        <h1 className="text-text-primary text-lg mb-6">Where is this drop-off?</h1>
-        <div className="w-72 space-y-3">
-          {sites.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setSiteId(s.id)}
-              className="w-full py-4 rounded-lg bg-surface border border-border text-text-primary hover:bg-surfaceRaised"
-            >
-              {s.name}
-            </button>
-          ))}
-        </div>
+
+        {mode === "settings" ? (
+          <SettingsPanel />
+        ) : (
+          <>
+            <h1 className="text-text-primary text-lg mb-6">Where is this drop-off?</h1>
+            <div className="w-72 space-y-3">
+              {sites.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setSiteId(s.id)}
+                  className="w-full py-4 rounded-lg bg-surface border border-border text-text-primary hover:bg-surfaceRaised"
+                >
+                  {s.name}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </main>
     );
   }
