@@ -6,6 +6,16 @@
 html, body {
   overscroll-behavior-y: none;
   overscroll-behavior-x: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Allow normal text selection inside admin dashboard inputs/tables */
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 body {
