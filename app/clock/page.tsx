@@ -692,6 +692,7 @@ function SettingsPanel({ pendingCount }: { pendingCount: number }) {
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
   const [notifStatus, setNotifStatus] = useState<"idle" | "enabling" | "enabled" | "denied" | "error">("idle");
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const buildId = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
   const shortVersion = buildId.slice(0, 7);
 
@@ -709,13 +710,22 @@ function SettingsPanel({ pendingCount }: { pendingCount: number }) {
 
   async function enableNotifications() {
     setNotifStatus("enabling");
+    setErrorDetail(null);
     try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        setErrorDetail("This browser doesn't support push notifications");
+        setNotifStatus("error");
+        return;
+      }
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
         setNotifStatus("denied");
         return;
       }
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Service worker never became ready (timed out after 8s)")), 8000)),
+      ]);
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
@@ -732,7 +742,8 @@ function SettingsPanel({ pendingCount }: { pendingCount: number }) {
         }),
       });
       setNotifStatus("enabled");
-    } catch {
+    } catch (e: any) {
+      setErrorDetail(`${e?.name || "Error"}: ${e?.message || String(e)}`);
       setNotifStatus("error");
     }
   }
@@ -773,6 +784,7 @@ function SettingsPanel({ pendingCount }: { pendingCount: number }) {
           ? "Couldn't enable — try again"
           : "Enable phone notifications"}
       </button>
+      {errorDetail && <p className="text-danger text-xs mb-3 break-words">{errorDetail}</p>}
 
       <button
         onClick={logOut}
