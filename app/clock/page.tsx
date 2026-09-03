@@ -142,6 +142,7 @@ function ClockScreen() {
   const [lateReturns, setLateReturns] = useState<{ guard: string; returned_at: string; late_by_minutes: number }[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [overrideReason, setOverrideReason] = useState<string | null>(null);
   const panicTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function startPanicPress() {
@@ -170,6 +171,9 @@ function ClockScreen() {
   useEffect(() => {
     supabase.from("sites").select("id, name").then(({ data }) => setSites(data || []));
     setPendingCount(loadQueue().length);
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
   }, []);
 
   async function refreshStatus() {
@@ -283,6 +287,12 @@ function ClockScreen() {
       return;
     }
     if (data.requires_override) {
+      setOverrideReason(null);
+      setStage("override");
+      return;
+    }
+    if (data.requires_move_approval) {
+      setOverrideReason(`Already clocked in at ${data.current_site_name} — supervisor must approve the move`);
       setStage("override");
       return;
     }
@@ -293,6 +303,8 @@ function ClockScreen() {
     }
     if (data.action === "clock_in") {
       setMessage({ text: `${data.guard} clocked in${data.is_late ? ` — late ${data.late_minutes}m` : ""}`, tone: data.is_late ? "warning" : "success" });
+    } else if (data.action === "relocated") {
+      setMessage({ text: `${data.guard} moved: ${data.old_site} → ${data.new_site}`, tone: "warning" });
     } else {
       setMessage({ text: `${data.guard} clocked out${data.is_early_leave ? ` — left ${data.early_minutes}m early` : ""}`, tone: data.is_early_leave ? "warning" : "success" });
     }
@@ -475,6 +487,7 @@ function ClockScreen() {
           supervisorPin={supervisorPin}
           guardPin={guardPin}
           submitting={submitting}
+          overrideReason={overrideReason}
           onPress={press}
           onClear={(field) => ({ pin: setPin, supervisorPin: setSupervisorPin, guardPin: setGuardPin }[field])("")}
           onGo={handleGo}
@@ -500,6 +513,7 @@ function PinScreen({
   supervisorPin,
   guardPin,
   submitting,
+  overrideReason,
   onPress,
   onClear,
   onGo,
@@ -511,6 +525,7 @@ function PinScreen({
   supervisorPin: string;
   guardPin: string;
   submitting: boolean;
+  overrideReason: string | null;
   onPress: (field: "pin" | "supervisorPin" | "guardPin", digit: string) => void;
   onClear: (field: "pin" | "supervisorPin" | "guardPin") => void;
   onGo: () => void;
@@ -526,7 +541,7 @@ function PinScreen({
     field = "pin";
   } else if (mode === "clock" && stage === "override") {
     heading = "Supervisor PIN required";
-    sub = "Not scheduled at this site today";
+    sub = overrideReason || "Not scheduled at this site today";
     field = "supervisorPin";
   } else if (mode === "return" && stage === "pin") {
     heading = "Enter your PIN";
@@ -678,9 +693,19 @@ function LiveBreakBanner({ guard, startedAt, limitMinutes }: { guard: string; st
   );
 }
 
+const VAPID_PUBLIC_KEY = "BKUYg1dVilg4zqmAgNqwgmO-a4EaGDb9bo26_9cGXk4kWfvdEeJ947dKvBbHYHylgE05CyIAG9SroaJekruaTA4";
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
 function SettingsPanel({ pendingCount }: { pendingCount: number }) {
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
+  const [notifStatus, setNotifStatus] = useState<"idle" | "enabling" | "enabled" | "denied" | "error">("idle");
   const buildId = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
   const shortVersion = buildId.slice(0, 7);
 
@@ -693,6 +718,36 @@ function SettingsPanel({ pendingCount }: { pendingCount: number }) {
       setTimeout(() => window.location.reload(), 800);
     } catch {
       setChecking(false);
+    }
+  }
+
+  async function enableNotifications() {
+    setNotifStatus("enabling");
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setNotifStatus("denied");
+        return;
+      }
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+      const json = subscription.toJSON();
+      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/clock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "register_push",
+          endpoint: json.endpoint,
+          p256dh: json.keys?.p256dh,
+          auth: json.keys?.auth,
+        }),
+      });
+      setNotifStatus("enabled");
+    } catch {
+      setNotifStatus("error");
     }
   }
 
@@ -715,6 +770,22 @@ function SettingsPanel({ pendingCount }: { pendingCount: number }) {
         className="w-full bg-accent text-bg font-medium rounded-md py-3 hover:opacity-90 transition disabled:opacity-50 mb-3"
       >
         {checking ? (checked ? "Restarting…" : "Checking…") : "Check for updates"}
+      </button>
+
+      <button
+        onClick={enableNotifications}
+        disabled={notifStatus === "enabling" || notifStatus === "enabled"}
+        className="w-full border border-border text-text-secondary rounded-md py-3 hover:bg-surface transition mb-3 disabled:opacity-70"
+      >
+        {notifStatus === "enabled"
+          ? "Notifications enabled ✓"
+          : notifStatus === "enabling"
+          ? "Enabling…"
+          : notifStatus === "denied"
+          ? "Permission denied — check phone settings"
+          : notifStatus === "error"
+          ? "Couldn't enable — try again"
+          : "Enable phone notifications"}
       </button>
 
       <button
