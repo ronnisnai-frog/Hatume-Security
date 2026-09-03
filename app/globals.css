@@ -19,8 +19,23 @@ input, textarea {
 }
 
 body {
-  background: #0b0c0e;
+  background-color: #0b0c0e;
   color: #edeff2;
+  position: relative;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url("/bg-pattern.jpg");
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  filter: brightness(3.2);
+  opacity: 0.6;
+  z-index: -1;
+  pointer-events: none;
 }
 
 ::selection {
