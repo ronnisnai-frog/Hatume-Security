@@ -5,7 +5,7 @@ import { Settings, X, Clock as ClockIcon, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "menu" | "clock" | "relieve" | "return" | "settings" | "break_timer";
-type Stage = "pin" | "override" | "relieve_supervisor" | "relieve_guard" | "result";
+type Stage = "site" | "pin" | "override" | "relieve_supervisor" | "relieve_guard" | "result";
 
 const supabase = createClient();
 const QUEUE_KEY = "hatume_offline_queue";
@@ -236,7 +236,10 @@ function ClockScreen() {
 
   function openMode(m: Mode) {
     setMode(m);
-    setStage(m === "relieve" ? "relieve_supervisor" : "pin");
+    if (m === "clock") setStage("site");
+    else if (m === "relieve") setStage("relieve_supervisor");
+    else setStage("pin");
+    setSiteId(null);
     setPin("");
     setSupervisorPin("");
     setGuardPin("");
@@ -363,41 +366,6 @@ function ClockScreen() {
   }
 
   // ---------- Site selection gate ----------
-  if (!siteId) {
-    return (
-      <main className="min-h-screen flex flex-col items-center justify-center px-4 relative">
-        <button
-          onClick={() => (mode === "settings" ? setMode("menu") : setMode("settings"))}
-          className="absolute top-4 right-4 p-2 rounded-md text-text-muted hover:text-text-primary hover:bg-surface transition"
-          aria-label="Settings"
-        >
-          {mode === "settings" ? <X size={22} /> : <Settings size={22} />}
-        </button>
-
-        <p className="font-mono text-xs text-accent tracking-wide mb-2">Hatume Security</p>
-
-        {mode === "settings" ? (
-          <SettingsPanel pendingCount={pendingCount} />
-        ) : (
-          <>
-            <h1 className="text-text-primary text-lg mb-6">Where is this drop-off?</h1>
-            <div className="w-72 space-y-3">
-              {sites.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => setSiteId(s.id)}
-                  className="w-full py-4 rounded-lg bg-surface border border-border text-text-primary hover:bg-surfaceRaised"
-                >
-                  {s.name}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-      </main>
-    );
-  }
-
   const currentSiteName = sites.find((s) => s.id === siteId)?.name;
 
   return (
@@ -445,7 +413,7 @@ function ClockScreen() {
       >
         Hatume Security
       </p>
-      <p className="text-text-muted text-xs mb-2">{currentSiteName}</p>
+      {currentSiteName && <p className="text-text-muted text-xs mb-2">{currentSiteName}</p>}
 
       {pendingCount > 0 && (
         <p className="text-warning text-xs mb-2">
@@ -471,14 +439,32 @@ function ClockScreen() {
           <MenuButton label="Clock in / out" onClick={() => openMode("clock")} />
           <MenuButton label="Relieve a guard (supervisor)" onClick={() => openMode("relieve")} />
           <MenuButton label="Return from break" onClick={() => openMode("return")} />
-          <button onClick={() => setSiteId(null)} className="w-full text-text-muted text-xs underline pt-2">
-            Change site
-          </button>
         </div>
       ) : mode === "settings" ? (
         <SettingsPanel pendingCount={pendingCount} />
       ) : mode === "break_timer" && breakInfo ? (
         <BreakCountdown info={breakInfo} onDismiss={goMenu} />
+      ) : mode === "clock" && stage === "site" ? (
+        <>
+          <h1 className="text-text-primary text-lg mb-6">Choose Location</h1>
+          <div className="w-72 space-y-3">
+            {sites.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => {
+                  setSiteId(s.id);
+                  setStage("pin");
+                }}
+                className="w-full py-4 rounded-lg bg-surface border border-border text-text-primary hover:bg-surfaceRaised"
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+          <button onClick={goMenu} className="mt-8 text-text-muted text-xs underline">
+            Back to menu
+          </button>
+        </>
       ) : (
         <PinScreen
           mode={mode}
