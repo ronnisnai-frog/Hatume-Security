@@ -28,10 +28,12 @@ body::before {
   content: "";
   position: fixed;
   inset: 0;
-  background-image: url("/bg-pattern.jpg");
-  background-repeat: no-repeat;
-  background-size: cover;
-  background-position: center;
+  background-image:
+    radial-gradient(ellipse at center, rgba(11, 12, 14, 0.9) 0%, rgba(11, 12, 14, 0.55) 30%, rgba(11, 12, 14, 0) 60%),
+    url("/bg-pattern.jpg");
+  background-repeat: no-repeat, no-repeat;
+  background-size: cover, cover;
+  background-position: center, center;
   filter: brightness(3.2);
   opacity: 0.6;
   z-index: -1;
