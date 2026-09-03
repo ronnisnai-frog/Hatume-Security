@@ -38,7 +38,7 @@ function AuthGate() {
 
   if (checking) {
     return (
-      <main className="min-h-screen bg-bg flex items-center justify-center">
+      <main className="min-h-screen flex items-center justify-center">
         <p className="font-mono text-text-secondary text-sm">Loading…</p>
       </main>
     );
@@ -75,7 +75,7 @@ function TabletLogin() {
   }
 
   return (
-    <main className="min-h-screen bg-bg flex items-center justify-center px-4">
+    <main className="min-h-screen flex items-center justify-center px-4">
       <form onSubmit={handleLogin} className="w-full max-w-sm bg-surface border border-border rounded-lg p-8">
         <p className="font-mono text-xs text-accent tracking-wide mb-1">Hatume Security</p>
         <h1 className="text-xl font-semibold text-text-primary mb-6">Tablet sign in</h1>
@@ -353,7 +353,7 @@ function ClockScreen() {
   // ---------- Site selection gate ----------
   if (!siteId) {
     return (
-      <main className="min-h-screen bg-bg flex flex-col items-center justify-center px-4 relative">
+      <main className="min-h-screen flex flex-col items-center justify-center px-4 relative">
         <button
           onClick={() => (mode === "settings" ? setMode("menu") : setMode("settings"))}
           className="absolute top-4 right-4 p-2 rounded-md text-text-muted hover:text-text-primary hover:bg-surface transition"
@@ -389,7 +389,7 @@ function ClockScreen() {
   const currentSiteName = sites.find((s) => s.id === siteId)?.name;
 
   return (
-    <main className="min-h-screen bg-bg flex flex-col items-center justify-center px-4 relative">
+    <main className="min-h-screen flex flex-col items-center justify-center px-4 relative">
       {/* Settings gear, top right */}
       <button
         onClick={() => (mode === "settings" ? goMenu() : openMode("settings"))}
