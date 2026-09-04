@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { ShieldCheck, MapPin, AlertTriangle, Clock } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+
+const supabase = createClient();
 
 type TimeEntry = {
   id: string;
@@ -28,43 +29,22 @@ type Shift = {
   sites: { name: string } | null;
 };
 
-export default function DashboardPage() {
-  const router = useRouter();
-  const supabase = createClient();
-
+export default function DashboardOverview() {
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [absentShifts, setAbsentShifts] = useState<Shift[]>([]);
   const [siteCount, setSiteCount] = useState(0);
-  const [guardCount, setGuardCount] = useState(0);
-  const [now, setNow] = useState(new Date());
+  const [weekCounts, setWeekCounts] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    async function init() {
-      const { data: session } = await supabase.auth.getSession();
-      if (!session.session) {
-        router.push("/login");
-        return;
-      }
-      await loadData();
-      setLoading(false);
-    }
-    init();
-
+    loadData();
     const channel = supabase
-      .channel("time_entries_live")
+      .channel("overview_live")
       .on("postgres_changes", { event: "*", schema: "public", table: "time_entries" }, loadData)
       .subscribe();
-
     return () => {
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadData() {
@@ -72,7 +52,9 @@ export default function DashboardPage() {
 
     const { data: entryData } = await supabase
       .from("time_entries")
-      .select("id, clock_in, clock_out, is_late, late_minutes, is_early_leave, early_minutes, is_override, rounded_minutes, guards(full_name), sites(name)")
+      .select(
+        "id, clock_in, clock_out, is_late, late_minutes, is_early_leave, early_minutes, is_override, rounded_minutes, guards(full_name), sites(name)"
+      )
       .gte("clock_in", `${today}T00:00:00`)
       .order("clock_in", { ascending: false });
 
@@ -82,11 +64,24 @@ export default function DashboardPage() {
       .eq("shift_date", today);
 
     const { count: sc } = await supabase.from("sites").select("*", { count: "exact", head: true });
-    const { count: gc } = await supabase.from("guards").select("*", { count: "exact", head: true }).eq("active", true);
+
+    // Last 7 days of check-in counts, for the activity bars
+    const counts: number[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dayStr = d.toISOString().slice(0, 10);
+      const { count } = await supabase
+        .from("time_entries")
+        .select("*", { count: "exact", head: true })
+        .gte("clock_in", `${dayStr}T00:00:00`)
+        .lte("clock_in", `${dayStr}T23:59:59`);
+      counts.push(count || 0);
+    }
+    setWeekCounts(counts);
 
     setEntries((entryData as unknown as TimeEntry[]) || []);
     setSiteCount(sc || 0);
-    setGuardCount(gc || 0);
 
     const clockedInGuardIds = new Set((entryData || []).map((e: any) => e.guard_id));
     const graceMs = 15 * 60 * 1000;
@@ -95,147 +90,196 @@ export default function DashboardPage() {
       return !clockedInGuardIds.has(s.guard_id) && Date.now() - started > graceMs;
     });
     setAbsentShifts((missed as unknown as Shift[]) || []);
+    setLoading(false);
   }
 
   const onDuty = entries.filter((e) => e.clock_in && !e.clock_out).length;
-  const completed = entries.filter((e) => e.clock_out).length;
   const overrides = entries.filter((e) => e.is_override).length;
+  const openAlerts = absentShifts.length + overrides;
+  const lateToday = entries.filter((e) => e.is_late).length;
+  const maxCount = Math.max(...weekCounts, 1);
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <p className="font-mono text-text-secondary text-sm">Loading guard data…</p>
+      <main className="flex items-center justify-center h-full">
+        <p className="font-mono text-text-secondary text-sm">Loading…</p>
       </main>
     );
   }
 
   return (
-    <div className="min-h-screen flex">
-      {/* Sidebar */}
-      <aside className="w-60 border-r border-border flex flex-col">
-        <div className="px-6 py-6 border-b border-border">
-          <p className="font-semibold text-text-primary">Hatume Security</p>
-          <p className="font-mono text-xs text-text-muted mt-1">Guard monitor</p>
+    <div>
+      <div className="flex justify-between items-start mb-[18px] flex-wrap gap-3.5">
+        <div>
+          <h1 className="text-[1.5rem] font-extrabold text-text-primary">Dashboard</h1>
+          <p className="text-text-secondary text-sm">Monitor all active sites and guard status at a glance.</p>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          <SidebarItem label="Overview" active />
-          <SidebarItem label="Guards" />
-          <SidebarItem label="Sites" />
-          <Link href="/dashboard/timesheets">
-            <SidebarItem label="Timesheets" />
-          </Link>
-          <SidebarItem label="Alerts" badge={absentShifts.length + overrides || undefined} />
-        </nav>
-        <div className="px-6 py-4 border-t border-border font-mono text-xs text-text-muted">
-          {guardCount} guards · {siteCount} sites
-        </div>
-      </aside>
+      </div>
 
-      {/* Main */}
-      <main className="flex-1 px-8 py-6">
-        <header className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-lg font-semibold text-text-primary">Overview</h1>
-            <p className="text-sm text-text-secondary">Today, {now.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}</p>
+      {/* ===== Stat row ===== */}
+      <div className="flex gap-4 mb-[18px] flex-wrap">
+        <StatCard
+          hero
+          icon={<ShieldCheck size={16} />}
+          label="Guards On Duty"
+          value={onDuty}
+          delay={0}
+        />
+        <StatCard
+          icon={<MapPin size={16} />}
+          label="Active Sites"
+          value={siteCount}
+          delay={80}
+          iconBg="bg-success/15"
+          iconColor="text-success"
+        />
+        <StatCard
+          icon={<AlertTriangle size={16} />}
+          label="Open Alerts"
+          value={openAlerts}
+          delay={160}
+          iconBg="bg-warning/15"
+          iconColor="text-warning"
+        />
+        <StatCard
+          icon={<Clock size={16} />}
+          label="Late Check-ins"
+          value={lateToday}
+          delay={240}
+        />
+      </div>
+
+      {/* ===== Two-col: activity + alerts ===== */}
+      <div className="flex gap-4 mb-4 flex-wrap">
+        <div
+          className="bg-surface border border-border rounded-[14px] p-5 flex-[1.4] min-w-[280px] shadow-[0_2px_6px_rgba(0,0,0,0.25),0_8px_18px_rgba(0,0,0,0.35)] animate-fade-up"
+          style={{ animationDelay: "80ms" }}
+        >
+          <div className="flex justify-between items-center mb-3.5">
+            <h3 className="text-text-primary font-extrabold text-base">Check-ins This Week</h3>
+            <span className="text-text-secondary text-xs">● All Sites</span>
           </div>
-          <p className="font-mono text-sm text-text-secondary">{now.toLocaleTimeString()}</p>
-        </header>
-
-        <div className="grid grid-cols-3 gap-4 mb-4">
-          <StatCard label="On duty now" value={onDuty} accent="success" />
-          <StatCard label="Completed shifts today" value={completed} accent="default" />
-          <StatCard label="Absent today" value={absentShifts.length} accent="danger" />
+          <div className="h-[150px] flex items-end gap-2.5">
+            {weekCounts.map((c, i) => (
+              <div
+                key={i}
+                className="flex-1 bg-accent rounded-t-md transition-all"
+                style={{ height: `${Math.max((c / maxCount) * 100, 4)}%` }}
+              />
+            ))}
+          </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
-          <Card title="Live activity" className="col-span-2">
-            {entries.length === 0 ? (
-              <EmptyState text="No clock-ins yet today." />
-            ) : (
-              <ul className="divide-y divide-border">
-                {entries.map((e) => (
-                  <li key={e.id} className="py-3 flex items-start justify-between text-sm">
-                    <div>
-                      <span className="text-text-primary font-medium">{e.guards?.full_name ?? "Unknown guard"}</span>
-                      <span className="text-text-secondary"> — {e.sites?.name ?? "Unknown site"}</span>
-                      <div className="font-mono text-xs text-text-muted mt-1">
-                        In {new Date(e.clock_in).toLocaleTimeString()}
-                        {e.clock_out ? ` · Out ${new Date(e.clock_out).toLocaleTimeString()}` : " · still on site"}
-                        {e.rounded_minutes ? ` · ${(e.rounded_minutes / 60).toFixed(2)}h` : ""}
-                      </div>
-                    </div>
-                    <div className="flex gap-1">
-                      {e.is_late && <Tag color="warning">{`Late ${e.late_minutes}m`}</Tag>}
-                      {e.is_early_leave && <Tag color="warning">{`Early ${e.early_minutes}m`}</Tag>}
-                      {e.is_override && <Tag color="danger">Override</Tag>}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-
-          <Card title="Alerts">
-            {absentShifts.length === 0 ? (
-              <EmptyState text="No absences flagged." />
-            ) : (
-              <ul className="space-y-3">
-                {absentShifts.map((s) => (
-                  <li key={s.id} className="text-sm">
-                    <p className="text-text-primary font-medium">{s.guards?.full_name ?? "Guard"}</p>
-                    <p className="text-text-secondary text-xs">
-                      Expected at {s.sites?.name} · {new Date(s.scheduled_start).toLocaleTimeString()}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
+        <div
+          className="bg-surface border border-border rounded-[14px] p-5 flex-1 min-w-[280px] shadow-[0_2px_6px_rgba(0,0,0,0.25),0_8px_18px_rgba(0,0,0,0.35)] animate-fade-up"
+          style={{ animationDelay: "160ms" }}
+        >
+          <div className="flex justify-between items-center mb-3.5">
+            <h3 className="text-text-primary font-extrabold text-base">Alerts</h3>
+          </div>
+          {openAlerts === 0 ? (
+            <EmptyState text="No alerts right now." />
+          ) : (
+            <div className="bg-bg rounded-lg p-3.5">
+              <div className="font-bold text-[0.86rem] text-text-primary">
+                {openAlerts} item{openAlerts > 1 ? "s" : ""} need attention
+              </div>
+              <div className="text-text-secondary text-xs mt-0.5 mb-2.5">
+                {absentShifts.length} absence{absentShifts.length !== 1 ? "s" : ""}, {overrides} override
+                {overrides !== 1 ? "s" : ""}
+              </div>
+              <a
+                href="/dashboard/alerts"
+                className="block text-center w-full bg-accent text-bg font-bold text-sm rounded-lg py-2.5 hover:opacity-90 transition"
+              >
+                Review Now
+              </a>
+            </div>
+          )}
         </div>
-      </main>
+      </div>
+
+      {/* ===== Recent check-ins ===== */}
+      <div
+        className="bg-surface border border-border rounded-[14px] p-5 shadow-[0_2px_6px_rgba(0,0,0,0.25),0_8px_18px_rgba(0,0,0,0.35)] animate-fade-up"
+        style={{ animationDelay: "240ms" }}
+      >
+        <div className="flex justify-between items-center mb-3.5">
+          <h3 className="text-text-primary font-extrabold text-base">Recent Check-ins</h3>
+        </div>
+        {entries.length === 0 ? (
+          <EmptyState text="No clock-ins yet today." />
+        ) : (
+          entries.slice(0, 8).map((e) => (
+            <div key={e.id} className="flex items-center gap-2.5 py-2.5 border-b border-border last:border-b-0">
+              <div className="w-9 h-9 rounded-full bg-accent text-bg flex items-center justify-center font-bold text-[0.8rem] flex-none">
+                {initialsFor(e.guards?.full_name)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-[0.86rem] text-text-primary">{e.guards?.full_name ?? "Unknown guard"}</div>
+                <div className="text-text-secondary text-xs">{e.sites?.name ?? "Unknown site"}</div>
+              </div>
+              {e.is_late ? (
+                <Badge tone="warning">{e.late_minutes}m late</Badge>
+              ) : (
+                <Badge tone="success">On Time</Badge>
+              )}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
 
-function SidebarItem({ label, active, badge }: { label: string; active?: boolean; badge?: number }) {
+function initialsFor(name?: string) {
+  if (!name) return "?";
+  const parts = name.trim().split(" ");
+  return (parts[0]?.[0] || "") + (parts[1]?.[0] || "");
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  hero,
+  delay,
+  iconBg,
+  iconColor,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  hero?: boolean;
+  delay: number;
+  iconBg?: string;
+  iconColor?: string;
+}) {
   return (
     <div
-      className={`flex items-center justify-between px-3 py-2 rounded-md text-sm cursor-pointer ${
-        active ? "bg-accent/10 text-accent" : "text-text-secondary hover:bg-surface"
+      className={`flex-1 min-w-[170px] rounded-[14px] p-4 relative shadow-[0_2px_6px_rgba(0,0,0,0.25),0_8px_18px_rgba(0,0,0,0.35)] animate-fade-up ${
+        hero ? "bg-accent text-bg" : "bg-surface border border-border"
       }`}
+      style={{ animationDelay: `${delay}ms` }}
     >
-      <span>{label}</span>
-      {badge ? (
-        <span className="font-mono text-xs bg-danger/20 text-danger rounded-full px-2 py-0.5">{badge}</span>
-      ) : null}
+      <div
+        className={`absolute top-3.5 right-3.5 w-7 h-7 rounded-full flex items-center justify-center ${
+          hero ? "bg-white/20 text-bg" : iconBg || "bg-surfaceRaised text-text-primary" 
+        } ${!hero && iconColor ? iconColor : ""}`}
+      >
+        {icon}
+      </div>
+      <div className={`text-[0.78rem] mb-2 ${hero ? "text-bg/70" : "text-text-secondary"}`}>{label}</div>
+      <div className={`text-[1.7rem] font-bold ${hero ? "text-bg" : "text-text-primary"}`}>{value}</div>
     </div>
   );
 }
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent: "success" | "danger" | "default" }) {
-  const color = accent === "success" ? "text-success" : accent === "danger" ? "text-danger" : "text-text-primary";
-  return (
-    <div className="bg-surface border border-border rounded-lg px-5 py-4">
-      <p className={`text-3xl font-semibold ${color}`}>{value}</p>
-      <p className="text-sm text-text-secondary mt-1">{label}</p>
-    </div>
-  );
-}
-
-function Card({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`bg-surface border border-border rounded-lg p-5 ${className}`}>
-      <h2 className="text-sm font-medium text-text-primary mb-3">{title}</h2>
-      {children}
-    </div>
-  );
+function Badge({ tone, children }: { tone: "success" | "warning"; children: React.ReactNode }) {
+  const cls = tone === "success" ? "bg-success/15 text-success" : "bg-warning/15 text-warning";
+  return <span className={`inline-block px-2.5 py-1 rounded-[10px] text-[0.72rem] font-bold ${cls}`}>{children}</span>;
 }
 
 function EmptyState({ text }: { text: string }) {
-  return <p className="text-sm text-text-muted py-6 text-center">{text}</p>;
-}
-
-function Tag({ color, children }: { color: "warning" | "danger"; children: React.ReactNode }) {
-  const cls = color === "warning" ? "bg-warning/15 text-warning" : "bg-danger/15 text-danger";
-  return <span className={`font-mono text-[11px] rounded px-2 py-0.5 h-fit ${cls}`}>{children}</span>;
+  return <p className="text-text-muted text-sm py-6 text-center">{text}</p>;
 }
