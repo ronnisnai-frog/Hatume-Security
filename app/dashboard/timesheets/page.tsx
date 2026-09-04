@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileSpreadsheet } from "lucide-react";
+import { FileSpreadsheet, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import * as XLSX from "xlsx";
 
@@ -15,12 +15,27 @@ const BASE_RATE: Record<string, number> = {
 const EXTRA_SHIFT_BONUS = 24;
 const ABSENCE_DEDUCTION = 24;
 
-function mostRecentFriday(): string {
-  const d = new Date();
-  const day = d.getDay();
-  const diff = (day - 5 + 7) % 7;
-  d.setDate(d.getDate() - diff);
+// Every real fortnight is a fixed 14-day block anchored to this known Friday start.
+// Periods run backward and forward from here in exact 14-day steps — never overlapping,
+// never a partial range.
+const ANCHOR = new Date("2026-09-11T00:00:00");
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function periodIndexForDate(d: Date): number {
+  return Math.floor((d.getTime() - ANCHOR.getTime()) / (14 * DAY_MS));
+}
+
+function periodStart(index: number): Date {
+  return new Date(ANCHOR.getTime() + index * 14 * DAY_MS);
+}
+
+function toDateStr(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+function formatRange(start: Date, end: Date): string {
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  return `${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
 }
 
 function tierLabel(tier: string | null): string {
@@ -35,23 +50,25 @@ function shiftPeriod(clockIn: string): "Day" | "Night" {
   return hour >= 5 && hour < 14 ? "Day" : "Night";
 }
 
+const currentIndex = periodIndexForDate(new Date());
+const PERIODS = [currentIndex - 2, currentIndex - 1, currentIndex, currentIndex + 1].map((idx) => {
+  const start = periodStart(idx);
+  const end = new Date(start.getTime() + 13 * DAY_MS);
+  let status: "Past" | "Current" | "Upcoming" = "Past";
+  if (idx === currentIndex) status = "Current";
+  if (idx > currentIndex) status = "Upcoming";
+  return { index: idx, start, end, status };
+});
+
 export default function TimesheetsPage() {
-  const [generating, setGenerating] = useState(false);
-  const [startDate, setStartDate] = useState(mostRecentFriday());
+  const [generatingIndex, setGeneratingIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  function endDate(start: string) {
-    const d = new Date(start);
-    d.setDate(d.getDate() + 13);
-    return d.toISOString().slice(0, 10);
-  }
-
-  async function downloadFortnight() {
-    setGenerating(true);
+  async function downloadFortnight(startDate: string, rangeEndDate: string) {
+    setGeneratingIndex(PERIODS.findIndex((p) => toDateStr(p.start) === startDate));
     setError(null);
     try {
       const rangeStart = `${startDate}T00:00:00`;
-      const rangeEndDate = endDate(startDate);
       const rangeEnd = `${rangeEndDate}T23:59:59`;
 
       const { data: guards, error: guardErr } = await supabase
@@ -166,7 +183,7 @@ export default function TimesheetsPage() {
     } catch (e: any) {
       setError(e.message || "Failed to generate report");
     }
-    setGenerating(false);
+    setGeneratingIndex(null);
   }
 
   return (
@@ -174,41 +191,64 @@ export default function TimesheetsPage() {
       <h1 className="text-[1.5rem] font-extrabold text-text-primary">Timesheets</h1>
       <p className="text-text-secondary text-sm mb-[18px]">
         Fixed fortnightly rates by tier (new guard K288, old guard K320, supervisor K340), ±K24 per extra
-        shift covered or absence.
+        shift covered or absence. Every download is locked to a real, non-overlapping fortnight — never more,
+        never less.
       </p>
 
-      <div className="bg-surface border border-border rounded-[14px] p-5 max-w-md shadow-[0_2px_6px_rgba(0,0,0,0.25),0_8px_18px_rgba(0,0,0,0.35)] animate-fade-up">
-        <div className="flex items-center gap-2.5 mb-4">
-          <div className="w-9 h-9 rounded-full bg-accent/15 text-accent flex items-center justify-center flex-none">
-            <FileSpreadsheet size={16} />
-          </div>
-          <div>
-            <div className="font-bold text-sm text-text-primary">Fortnight export</div>
-            <div className="text-text-secondary text-xs">Summary, Detail &amp; Absences sheets</div>
-          </div>
-        </div>
+      {error && <p className="text-danger text-sm mb-4">{error}</p>}
 
-        <label className="block text-sm text-text-secondary mb-1">Fortnight start (Friday)</label>
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          className="w-full mb-1 bg-bg border border-border rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
-        />
-        <p className="text-xs text-text-muted mb-5">
-          Covers {startDate} through {endDate(startDate)}
-        </p>
-
-        {error && <p className="text-danger text-sm mb-4">{error}</p>}
-
-        <button
-          onClick={downloadFortnight}
-          disabled={generating}
-          className="w-full bg-accent text-bg font-bold rounded-lg py-2.5 hover:opacity-90 transition disabled:opacity-50"
-        >
-          {generating ? "Generating…" : "Download Excel (.xlsx)"}
-        </button>
+      <div className="flex flex-col gap-3 max-w-lg">
+        {PERIODS.map((p, i) => {
+          const isGenerating = generatingIndex === i;
+          const startStr = toDateStr(p.start);
+          const endStr = toDateStr(p.end);
+          return (
+            <div
+              key={p.index}
+              className="bg-surface border border-border rounded-[14px] p-5 flex items-center justify-between shadow-[0_2px_6px_rgba(0,0,0,0.25),0_8px_18px_rgba(0,0,0,0.35)] animate-fade-up"
+              style={{ animationDelay: `${i * 60}ms` }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-accent/15 text-accent flex items-center justify-center flex-none">
+                  <FileSpreadsheet size={16} />
+                </div>
+                <div>
+                  <div className="font-bold text-sm text-text-primary">{formatRange(p.start, p.end)}</div>
+                  <StatusBadge status={p.status} />
+                </div>
+              </div>
+              <button
+                onClick={() => downloadFortnight(startStr, endStr)}
+                disabled={generatingIndex !== null || p.status === "Upcoming"}
+                className={`flex items-center gap-1.5 font-bold text-sm rounded-lg px-3.5 py-2 transition disabled:opacity-50 ${
+                  p.status === "Upcoming"
+                    ? "bg-surfaceRaised text-text-secondary cursor-not-allowed"
+                    : "bg-accent text-bg hover:opacity-90"
+                }`}
+              >
+                {p.status === "Upcoming" ? (
+                  "Coming soon"
+                ) : (
+                  <>
+                    <Download size={14} />
+                    {isGenerating ? "Generating…" : "Download"}
+                  </>
+                )}
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
+}
+
+function StatusBadge({ status }: { status: "Past" | "Current" | "Upcoming" }) {
+  const cls =
+    status === "Current"
+      ? "bg-success/15 text-success"
+      : status === "Upcoming"
+      ? "bg-warning/15 text-warning"
+      : "bg-surfaceRaised text-text-secondary";
+  return <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[0.68rem] font-bold ${cls}`}>{status}</span>;
 }
