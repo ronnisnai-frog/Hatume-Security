@@ -189,14 +189,14 @@ export default function TimesheetsPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-bg flex items-center justify-center">
+      <main className="min-h-screen flex items-center justify-center">
         <p className="font-mono text-text-secondary text-sm">Loading…</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-bg px-8 py-6">
+    <main className="min-h-screen px-8 py-6">
       <h1 className="text-lg font-semibold text-text-primary mb-1">Fortnight Payroll Export</h1>
       <p className="text-sm text-text-secondary mb-6">
         Fixed fortnightly rates by tier (new guard K288, old guard K320, supervisor K340), ±K24 per extra
