@@ -51,7 +51,7 @@ function shiftPeriod(clockIn: string): "Day" | "Night" {
 }
 
 const currentIndex = periodIndexForDate(new Date());
-const PERIODS = [currentIndex - 2, currentIndex - 1, currentIndex, currentIndex + 1].map((idx) => {
+const PERIODS = [currentIndex, currentIndex + 1].map((idx) => {
   const start = periodStart(idx);
   const end = new Date(start.getTime() + 13 * DAY_MS);
   let status: "Past" | "Current" | "Upcoming" = "Past";
@@ -190,9 +190,7 @@ export default function TimesheetsPage() {
     <div>
       <h1 className="text-[1.5rem] font-extrabold text-text-primary">Timesheets</h1>
       <p className="text-text-secondary text-sm mb-[18px]">
-        Fixed fortnightly rates by tier (new guard K288, old guard K320, supervisor K340), ±K24 per extra
-        shift covered or absence. Every download is locked to a real, non-overlapping fortnight — never more,
-        never less.
+        Every download is locked to a real, non-overlapping fortnight — never more, never less.
       </p>
 
       {error && <p className="text-danger text-sm mb-4">{error}</p>}
