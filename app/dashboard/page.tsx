@@ -103,14 +103,14 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-bg flex items-center justify-center">
+      <main className="min-h-screen flex items-center justify-center">
         <p className="font-mono text-text-secondary text-sm">Loading guard data…</p>
       </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-bg flex">
+    <div className="min-h-screen flex">
       {/* Sidebar */}
       <aside className="w-60 border-r border-border flex flex-col">
         <div className="px-6 py-6 border-b border-border">
