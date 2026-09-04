@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { FileSpreadsheet } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import * as XLSX from "xlsx";
+
+const supabase = createClient();
 
 const BASE_RATE: Record<string, number> = {
   new_guard: 288,
@@ -15,7 +17,7 @@ const ABSENCE_DEDUCTION = 24;
 
 function mostRecentFriday(): string {
   const d = new Date();
-  const day = d.getDay(); // 0=Sun..5=Fri..6=Sat
+  const day = d.getDay();
   const diff = (day - 5 + 7) % 7;
   d.setDate(d.getDate() - diff);
   return d.toISOString().slice(0, 10);
@@ -34,23 +36,9 @@ function shiftPeriod(clockIn: string): "Day" | "Night" {
 }
 
 export default function TimesheetsPage() {
-  const router = useRouter();
-  const supabase = createClient();
-  const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [startDate, setStartDate] = useState(mostRecentFriday());
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) {
-        router.push("/login");
-        return;
-      }
-      setLoading(false);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   function endDate(start: string) {
     const d = new Date(start);
@@ -74,7 +62,9 @@ export default function TimesheetsPage() {
 
       const { data: entries, error: entryErr } = await supabase
         .from("time_entries")
-        .select("guard_id, clock_in, clock_out, rounded_minutes, is_late, late_minutes, is_early_leave, early_minutes, is_override, guards(full_name), sites(name)")
+        .select(
+          "guard_id, clock_in, clock_out, rounded_minutes, is_late, late_minutes, is_early_leave, early_minutes, is_override, guards(full_name), sites(name)"
+        )
         .gte("clock_in", rangeStart)
         .lte("clock_in", rangeEnd)
         .order("clock_in", { ascending: true });
@@ -87,8 +77,6 @@ export default function TimesheetsPage() {
         .lte("shift_date", rangeEndDate);
       if (shiftErr) throw shiftErr;
 
-      // A guard's set of "regularly scheduled" dates (any site), used to decide
-      // whether a supervisor's override that day is a genuine off-day pickup.
       const scheduledDatesByGuard = new Map<string, Set<string>>();
       for (const s of shifts || []) {
         const gid = (s as any).guard_id;
@@ -96,13 +84,11 @@ export default function TimesheetsPage() {
         scheduledDatesByGuard.get(gid)!.add((s as any).shift_date);
       }
 
-      // Absences: scheduled shifts with no matching time entry that day for that guard
       const entryKeys = new Set(
         (entries || []).map((e: any) => `${e.guards?.full_name}__${new Date(e.clock_in).toISOString().slice(0, 10)}`)
       );
       const absences = (shifts || []).filter((s: any) => !entryKeys.has(`${s.guards?.full_name}__${s.shift_date}`));
 
-      // ---- Per-guard tallies ----
       type Tally = { late: number; early: number; extraShifts: number; absences: number };
       const byGuardId: Record<string, Tally> = {};
       for (const g of guards || []) {
@@ -119,8 +105,6 @@ export default function TimesheetsPage() {
           const guard = (guards || []).find((g) => g.id === gid);
           const entryDate = new Date(e.clock_in).toISOString().slice(0, 10);
           if (guard?.role === "supervisor") {
-            // Only counts as an extra-shift bonus if this wasn't already a regularly
-            // scheduled day for them — moving between posts on a rostered day doesn't earn it.
             const scheduledToday = scheduledDatesByGuard.get(gid)?.has(entryDate);
             if (!scheduledToday) t.extraShifts += 1;
           } else {
@@ -133,7 +117,6 @@ export default function TimesheetsPage() {
         if (byGuardId[gid]) byGuardId[gid].absences += 1;
       }
 
-      // ---- Summary sheet ----
       const summaryRows = (guards || []).map((g) => {
         const t = byGuardId[g.id];
         const base = BASE_RATE[g.pay_tier || "new_guard"] ?? 0;
@@ -154,7 +137,6 @@ export default function TimesheetsPage() {
         };
       });
 
-      // ---- Detail sheet: every entry ----
       const detailRows = (entries || []).map((e: any) => ({
         Guard: e.guards?.full_name ?? "Unknown",
         Site: e.sites?.name ?? "Unknown",
@@ -187,29 +169,31 @@ export default function TimesheetsPage() {
     setGenerating(false);
   }
 
-  if (loading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center">
-        <p className="font-mono text-text-secondary text-sm">Loading…</p>
-      </main>
-    );
-  }
-
   return (
-    <main className="min-h-screen px-8 py-6">
-      <h1 className="text-lg font-semibold text-text-primary mb-1">Fortnight Payroll Export</h1>
-      <p className="text-sm text-text-secondary mb-6">
+    <div>
+      <h1 className="text-[1.5rem] font-extrabold text-text-primary">Timesheets</h1>
+      <p className="text-text-secondary text-sm mb-[18px]">
         Fixed fortnightly rates by tier (new guard K288, old guard K320, supervisor K340), ±K24 per extra
         shift covered or absence.
       </p>
 
-      <div className="bg-surface border border-border rounded-lg p-6 max-w-md">
+      <div className="bg-surface border border-border rounded-[14px] p-5 max-w-md shadow-[0_2px_6px_rgba(0,0,0,0.25),0_8px_18px_rgba(0,0,0,0.35)] animate-fade-up">
+        <div className="flex items-center gap-2.5 mb-4">
+          <div className="w-9 h-9 rounded-full bg-accent/15 text-accent flex items-center justify-center flex-none">
+            <FileSpreadsheet size={16} />
+          </div>
+          <div>
+            <div className="font-bold text-sm text-text-primary">Fortnight export</div>
+            <div className="text-text-secondary text-xs">Summary, Detail &amp; Absences sheets</div>
+          </div>
+        </div>
+
         <label className="block text-sm text-text-secondary mb-1">Fortnight start (Friday)</label>
         <input
           type="date"
           value={startDate}
           onChange={(e) => setStartDate(e.target.value)}
-          className="w-full mb-1 bg-bg border border-border rounded-md px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+          className="w-full mb-1 bg-bg border border-border rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <p className="text-xs text-text-muted mb-5">
           Covers {startDate} through {endDate(startDate)}
@@ -220,11 +204,11 @@ export default function TimesheetsPage() {
         <button
           onClick={downloadFortnight}
           disabled={generating}
-          className="w-full bg-accent text-bg font-medium rounded-md py-2 hover:opacity-90 transition disabled:opacity-50"
+          className="w-full bg-accent text-bg font-bold rounded-lg py-2.5 hover:opacity-90 transition disabled:opacity-50"
         >
           {generating ? "Generating…" : "Download Excel (.xlsx)"}
         </button>
       </div>
-    </main>
+    </div>
   );
 }
