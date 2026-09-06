@@ -13,6 +13,12 @@ type Guard = {
   active: boolean;
 };
 
+const TIER_ORDER: Record<string, number> = {
+  supervisor: 0,
+  old_guard: 1,
+  new_guard: 2,
+};
+
 function initialsFor(name: string) {
   const parts = name.trim().split(" ");
   return (parts[0]?.[0] || "") + (parts[1]?.[0] || "");
@@ -32,19 +38,36 @@ export default function GuardsPage() {
 
   useEffect(() => {
     load();
+    const channel = supabase
+      .channel("guards_live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "time_entries" }, refreshOnDuty)
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   async function load() {
     const { data: guardData } = await supabase
       .from("guards")
       .select("id, full_name, role, pay_tier, active")
-      .order("full_name");
+      .eq("active", true);
 
-    const { data: openEntries } = await supabase.from("time_entries").select("guard_id").is("clock_out", null);
+    const sorted = (guardData || []).sort((a, b) => {
+      const tierA = TIER_ORDER[a.pay_tier || "new_guard"] ?? 3;
+      const tierB = TIER_ORDER[b.pay_tier || "new_guard"] ?? 3;
+      if (tierA !== tierB) return tierA - tierB;
+      return a.full_name.localeCompare(b.full_name);
+    });
 
-    setGuards(guardData || []);
-    setOnDutyIds(new Set((openEntries || []).map((e: any) => e.guard_id)));
+    setGuards(sorted);
+    await refreshOnDuty();
     setLoading(false);
+  }
+
+  async function refreshOnDuty() {
+    const { data: openEntries } = await supabase.from("time_entries").select("guard_id").is("clock_out", null);
+    setOnDutyIds(new Set((openEntries || []).map((e: any) => e.guard_id)));
   }
 
   if (loading) {
@@ -66,7 +89,7 @@ export default function GuardsPage() {
           return (
             <div
               key={g.id}
-              className="w-[280px] bg-surface border border-border rounded-xl p-5 shadow-[0_2px_6px_rgba(0,0,0,0.25),0_8px_18px_rgba(0,0,0,0.35)] animate-fade-up"
+              className="w-[280px] bg-surface border border-border rounded-xl p-5 shadow-[0_2px_6px_rgba(0,0,0,0.25),0_8px_18px_rgba(0,0,0,0.35)] animate-fade-up transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_4px_10px_rgba(0,0,0,0.3),0_12px_26px_rgba(0,0,0,0.45)] cursor-default"
               style={{ animationDelay: `${i * 40}ms` }}
             >
               <div className="w-[52px] h-[52px] rounded-full bg-accent text-bg flex items-center justify-center font-bold text-[1.1rem] mb-3">
