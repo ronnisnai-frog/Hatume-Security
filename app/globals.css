@@ -34,8 +34,8 @@ body::before {
   background-repeat: no-repeat, no-repeat;
   background-size: cover, cover;
   background-position: center, center;
-  filter: brightness(3.2);
-  opacity: 0.6;
+  filter: brightness(2.2);
+  opacity: 0.32;
   z-index: -1;
   pointer-events: none;
 }
