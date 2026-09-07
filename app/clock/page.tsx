@@ -413,6 +413,10 @@ function ClockScreen() {
       >
         Hatume Security
       </p>
+      {mode === "menu" && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src="/hatume-crest.png" alt="" className="w-20 h-20 object-contain mb-2 select-none pointer-events-none" />
+      )}
       {currentSiteName && <p className="text-text-muted text-xs mb-2">{currentSiteName}</p>}
 
       {pendingCount > 0 && (
