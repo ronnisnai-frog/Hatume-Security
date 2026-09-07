@@ -130,7 +130,7 @@ export default function TimesheetsPage() {
 
     // Recently downloaded: any period in our lookback window with a download history
     const history: Period[] = [];
-    for (const [key, dates] of downloadsByPeriod.entries()) {
+    for (const [key, dates] of Array.from(downloadsByPeriod.entries())) {
       const start = new Date(`${key}T00:00:00`);
       const idx = periodIndexForDate(start);
       if (idx >= currentIndex) continue; // current/upcoming handled above, never archived
