@@ -78,7 +78,7 @@ function TabletLogin() {
     <main className="min-h-screen flex items-center justify-center px-4">
       <form onSubmit={handleLogin} className="w-full max-w-sm bg-surface border border-border rounded-lg p-8">
         <p className="font-mono text-xs text-accent tracking-wide mb-1">Hatume Security</p>
-        <h1 className="text-xl font-semibold text-text-primary mb-6">Tablet sign in</h1>
+        <h1 className="text-xl font-semibold text-text-primary mb-6">Guard Timesheet</h1>
 
         <label className="block text-sm text-text-secondary mb-1">Email</label>
         <input
