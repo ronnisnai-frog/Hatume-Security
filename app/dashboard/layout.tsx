@@ -9,6 +9,7 @@ import {
   MapPin,
   FileSpreadsheet,
   AlertTriangle,
+  CalendarRange,
   LogOut,
   Search,
   Bell,
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Overview", icon: LayoutGrid },
   { href: "/dashboard/guards", label: "Guards", icon: Shield },
   { href: "/dashboard/sites", label: "Sites", icon: MapPin },
+  { href: "/dashboard/roster", label: "Roster", icon: CalendarRange },
   { href: "/dashboard/timesheets", label: "Timesheets", icon: FileSpreadsheet },
   { href: "/dashboard/alerts", label: "Alerts", icon: AlertTriangle },
 ];
