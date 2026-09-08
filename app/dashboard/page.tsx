@@ -50,33 +50,42 @@ export default function DashboardOverview() {
   async function loadData() {
     const today = new Date().toISOString().slice(0, 10);
 
-    const { data: entryData } = await supabase
-      .from("time_entries")
-      .select(
-        "id, clock_in, clock_out, is_late, late_minutes, is_early_leave, early_minutes, is_override, rounded_minutes, guards(full_name), sites(name)"
-      )
-      .gte("clock_in", `${today}T00:00:00`)
-      .order("clock_in", { ascending: false });
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
 
-    const { data: shiftData } = await supabase
-      .from("shifts")
-      .select("id, guard_id, site_id, scheduled_start, guards(full_name), sites(name)")
-      .eq("shift_date", today);
+    const [entryRes, shiftRes, siteRes, weekRes] = await Promise.all([
+      supabase
+        .from("time_entries")
+        .select(
+          "id, clock_in, clock_out, is_late, late_minutes, is_early_leave, early_minutes, is_override, rounded_minutes, guards(full_name), sites(name)"
+        )
+        .gte("clock_in", `${today}T00:00:00`)
+        .order("clock_in", { ascending: false }),
+      supabase
+        .from("shifts")
+        .select("id, guard_id, site_id, scheduled_start, guards(full_name), sites(name)")
+        .eq("shift_date", today),
+      supabase.from("sites").select("*", { count: "exact", head: true }),
+      supabase.from("time_entries").select("clock_in").gte("clock_in", sevenDaysAgo.toISOString()),
+    ]);
 
-    const { count: sc } = await supabase.from("sites").select("*", { count: "exact", head: true });
+    const entryData = entryRes.data;
+    const shiftData = shiftRes.data;
+    const sc = siteRes.count;
+    const weekEntries = weekRes.data;
 
-    // Last 7 days of check-in counts, for the activity bars
-    const counts: number[] = [];
+    const counts: number[] = [0, 0, 0, 0, 0, 0, 0];
+    const dayKeys: string[] = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dayStr = d.toISOString().slice(0, 10);
-      const { count } = await supabase
-        .from("time_entries")
-        .select("*", { count: "exact", head: true })
-        .gte("clock_in", `${dayStr}T00:00:00`)
-        .lte("clock_in", `${dayStr}T23:59:59`);
-      counts.push(count || 0);
+      dayKeys.push(d.toISOString().slice(0, 10));
+    }
+    for (const e of weekEntries || []) {
+      const key = new Date(e.clock_in).toISOString().slice(0, 10);
+      const idx = dayKeys.indexOf(key);
+      if (idx >= 0) counts[idx] += 1;
     }
     setWeekCounts(counts);
 
