@@ -3,6 +3,7 @@
   "short_name": "Hatume",
   "description": "Guard clock-in and monitoring for Hatume Security",
   "start_url": "/clock",
+  "scope": "/clock",
   "display": "standalone",
   "background_color": "#0B0C0E",
   "theme_color": "#0B0C0E",
