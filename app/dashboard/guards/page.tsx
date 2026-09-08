@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
 const supabase = createClient();
@@ -87,9 +88,10 @@ export default function GuardsPage() {
         {guards.map((g, i) => {
           const onDuty = onDutyIds.has(g.id);
           return (
-            <div
+            <Link
               key={g.id}
-              className="w-[280px] bg-surface border border-border rounded-xl p-5 shadow-[0_2px_6px_rgba(0,0,0,0.25),0_8px_18px_rgba(0,0,0,0.35)] animate-fade-up transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_4px_10px_rgba(0,0,0,0.3),0_12px_26px_rgba(0,0,0,0.45)] cursor-default"
+              href={`/dashboard/guards/${g.id}`}
+              className="w-[280px] bg-surface border border-border rounded-xl p-5 shadow-[0_2px_6px_rgba(0,0,0,0.25),0_8px_18px_rgba(0,0,0,0.35)] animate-fade-up transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_4px_10px_rgba(0,0,0,0.3),0_12px_26px_rgba(0,0,0,0.45)] cursor-pointer block"
               style={{ animationDelay: `${i * 40}ms` }}
             >
               <div className="w-[52px] h-[52px] rounded-full bg-accent text-bg flex items-center justify-center font-bold text-[1.1rem] mb-3">
@@ -104,7 +106,7 @@ export default function GuardsPage() {
               >
                 {onDuty ? "On Duty" : "Off Duty"}
               </span>
-            </div>
+            </Link>
           );
         })}
       </div>
