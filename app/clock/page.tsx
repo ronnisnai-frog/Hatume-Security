@@ -5,7 +5,7 @@ import { Settings, X, Clock as ClockIcon, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "menu" | "clock" | "relieve" | "return" | "settings" | "break_timer";
-type Stage = "site" | "pin" | "override" | "relieve_supervisor" | "relieve_guard" | "result";
+type Stage = "site" | "pin" | "camera" | "override" | "relieve_supervisor" | "relieve_guard" | "result";
 
 const supabase = createClient();
 const QUEUE_KEY = "hatume_offline_queue";
@@ -143,6 +143,7 @@ function ClockScreen() {
   const [showHistory, setShowHistory] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [overrideReason, setOverrideReason] = useState<string | null>(null);
+  const [capturedPhoto, setCapturedPhoto] = useState<string | undefined>(undefined);
   const panicTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function startPanicPress() {
@@ -232,6 +233,7 @@ function ClockScreen() {
     setSupervisorPin("");
     setGuardPin("");
     setMessage(null);
+    setCapturedPhoto(undefined);
   }
 
   function openMode(m: Mode) {
@@ -244,6 +246,7 @@ function ClockScreen() {
     setSupervisorPin("");
     setGuardPin("");
     setMessage(null);
+    setCapturedPhoto(undefined);
   }
 
   useEffect(() => {
@@ -283,7 +286,7 @@ function ClockScreen() {
   }
 
   async function submitClock(withSupervisorPin?: string) {
-    const data = await call("clock", { pin, site_id: siteId, supervisor_pin: withSupervisorPin });
+    const data = await call("clock", { pin, site_id: siteId, supervisor_pin: withSupervisorPin, photo_base64: capturedPhoto });
     if (data.offline) {
       setMessage({ text: "No connection — saved and will sync automatically", tone: "warning" });
       setStage("result");
@@ -358,7 +361,7 @@ function ClockScreen() {
   }
 
   function handleGo() {
-    if (mode === "clock" && stage === "pin") submitClock();
+    if (mode === "clock" && stage === "pin") setStage("camera");
     else if (mode === "clock" && stage === "override") submitClock(supervisorPin);
     else if (mode === "return" && stage === "pin") submitReturn();
     else if (mode === "relieve" && stage === "relieve_supervisor") setStage("relieve_guard");
@@ -469,6 +472,14 @@ function ClockScreen() {
             Back to menu
           </button>
         </>
+      ) : mode === "clock" && stage === "camera" ? (
+        <CameraCapture
+          onCapture={(photo) => {
+            setCapturedPhoto(photo);
+            submitClock();
+          }}
+          onSkip={() => submitClock()}
+        />
       ) : (
         <PinScreen
           mode={mode}
@@ -691,6 +702,100 @@ function urlBase64ToUint8Array(base64String: string) {
   const rawData = atob(base64);
   return Uint8Array.from(rawData.split("").map((c) => c.charCodeAt(0)));
 }
+
+function CameraCapture({ onCapture, onSkip }: { onCapture: (photo: string) => void; onSkip: () => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [status, setStatus] = useState<"starting" | "ready" | "denied" | "unsupported">("starting");
+  const [countdown, setCountdown] = useState(2);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function start() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setStatus("unsupported");
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        setStatus("ready");
+      } catch {
+        setStatus("denied");
+      }
+    }
+    start();
+
+    // Safety net: never let a camera problem block clock-in for more than a few seconds
+    const fallback = setTimeout(() => {
+      if (!cancelled) onSkip();
+    }, 6000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(fallback);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    if (countdown <= 0) {
+      capture();
+      return;
+    }
+    const t = setTimeout(() => setCountdown((c) => c - 1), 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, countdown]);
+
+  function capture() {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0) {
+      onSkip();
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = (video.videoHeight / video.videoWidth) * 320;
+    const ctx = canvas.getContext("2d");
+    ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    onCapture(dataUrl);
+  }
+
+  if (status === "denied" || status === "unsupported") {
+    // Camera unavailable — proceed without a photo rather than blocking the clock-in
+    onSkip();
+    return <p className="text-text-secondary text-sm">Continuing…</p>;
+  }
+
+  return (
+    <div className="flex flex-col items-center">
+      <p className="text-text-secondary text-sm mb-3">
+        {status === "starting" ? "Starting camera…" : countdown > 0 ? "Hold still…" : "Capturing…"}
+      </p>
+      <div className="w-56 h-56 rounded-full overflow-hidden border-4 border-accent bg-surface flex items-center justify-center">
+        <video ref={videoRef} muted playsInline className="w-full h-full object-cover scale-x-[-1]" />
+      </div>
+      <button onClick={onSkip} className="mt-6 text-text-muted text-xs underline">
+        Skip
+      </button>
+    </div>
+  );
+}
+
 
 function SettingsPanel({ pendingCount }: { pendingCount: number }) {
   const [checking, setChecking] = useState(false);
