@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Clock, AlertTriangle, TrendingUp } from "lucide-react";
+import { ArrowLeft, Clock, AlertTriangle, TrendingUp, Camera } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const supabase = createClient();
@@ -18,6 +18,7 @@ type Entry = {
   early_minutes: number;
   is_override: boolean;
   rounded_minutes: number | null;
+  photo_path: string | null;
   sites: { name: string } | null;
 };
 
@@ -47,6 +48,15 @@ export default function GuardDetailPage() {
     load();
   }, [guardId]);
 
+  async function viewPhoto(path: string) {
+    const { data, error } = await supabase.storage.from("clock-photos").createSignedUrl(path, 3600);
+    if (data?.signedUrl) {
+      window.open(data.signedUrl, "_blank");
+    } else {
+      alert(error?.message || "Couldn't load that photo.");
+    }
+  }
+
   async function load() {
     const { data: guardData, error } = await supabase
       .from("guards")
@@ -63,7 +73,7 @@ export default function GuardDetailPage() {
 
     const { data: entryData } = await supabase
       .from("time_entries")
-      .select("id, clock_in, clock_out, is_late, late_minutes, is_early_leave, early_minutes, is_override, rounded_minutes, sites(name)")
+      .select("id, clock_in, clock_out, is_late, late_minutes, is_early_leave, early_minutes, is_override, rounded_minutes, photo_path, sites(name)")
       .eq("guard_id", guardId)
       .order("clock_in", { ascending: false })
       .limit(30);
@@ -139,10 +149,19 @@ export default function GuardDetailPage() {
                   {e.clock_out ? ` – ${new Date(e.clock_out).toLocaleTimeString()}` : " – still on site"}
                 </div>
               </div>
-              <div className="flex gap-1">
+              <div className="flex items-center gap-1">
                 {e.is_late && <Tag color="warning">{e.late_minutes}m late</Tag>}
                 {e.is_early_leave && <Tag color="warning">{e.early_minutes}m early</Tag>}
                 {e.is_override && <Tag color="danger">Override</Tag>}
+                {e.photo_path && (
+                  <button
+                    onClick={() => viewPhoto(e.photo_path!)}
+                    className="p-1.5 rounded-md text-text-secondary hover:text-accent hover:bg-surfaceRaised transition"
+                    title="View clock-in photo"
+                  >
+                    <Camera size={14} />
+                  </button>
+                )}
               </div>
             </div>
           ))
