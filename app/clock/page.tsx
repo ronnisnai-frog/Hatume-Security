@@ -5,7 +5,7 @@ import { Settings, X, Clock as ClockIcon, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "menu" | "clock" | "relieve" | "return" | "settings" | "break_timer";
-type Stage = "site" | "pin" | "camera" | "override" | "relieve_supervisor" | "relieve_guard" | "result";
+type Stage = "site" | "pin" | "camera" | "override" | "override_reason" | "relieve_supervisor" | "relieve_guard" | "result";
 
 const supabase = createClient();
 const QUEUE_KEY = "hatume_offline_queue";
@@ -143,6 +143,7 @@ function ClockScreen() {
   const [showHistory, setShowHistory] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [overrideReason, setOverrideReason] = useState<string | null>(null);
+  const [isStaleFix, setIsStaleFix] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | undefined>(undefined);
   const panicTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -234,6 +235,8 @@ function ClockScreen() {
     setGuardPin("");
     setMessage(null);
     setCapturedPhoto(undefined);
+    setIsStaleFix(false);
+    setOverrideReason(null);
   }
 
   function openMode(m: Mode) {
@@ -247,6 +250,8 @@ function ClockScreen() {
     setGuardPin("");
     setMessage(null);
     setCapturedPhoto(undefined);
+    setIsStaleFix(false);
+    setOverrideReason(null);
   }
 
   useEffect(() => {
@@ -285,8 +290,8 @@ function ClockScreen() {
     }
   }
 
-  async function submitClock(withSupervisorPin?: string) {
-    const data = await call("clock", { pin, site_id: siteId, supervisor_pin: withSupervisorPin, photo_base64: capturedPhoto });
+  async function submitClock(withSupervisorPin?: string, reason?: string) {
+    const data = await call("clock", { pin, site_id: siteId, supervisor_pin: withSupervisorPin, photo_base64: capturedPhoto, override_reason: reason });
     if (data.offline) {
       setMessage({ text: "No connection — saved and will sync automatically", tone: "warning" });
       setStage("result");
@@ -294,11 +299,20 @@ function ClockScreen() {
     }
     if (data.requires_override) {
       setOverrideReason(null);
+      setIsStaleFix(false);
       setStage("override");
       return;
     }
     if (data.requires_move_approval) {
       setOverrideReason(`Already clocked in at ${data.current_site_name} — supervisor must approve the move`);
+      setIsStaleFix(false);
+      setStage("override");
+      return;
+    }
+    if (data.requires_stale_fix) {
+      const since = data.stale_since ? new Date(data.stale_since).toLocaleString() : "earlier";
+      setOverrideReason(`Unclosed shift from ${since} at ${data.stale_site_name} — supervisor must force-close it first`);
+      setIsStaleFix(true);
       setStage("override");
       return;
     }
@@ -362,7 +376,10 @@ function ClockScreen() {
 
   function handleGo() {
     if (mode === "clock" && stage === "pin") setStage("camera");
-    else if (mode === "clock" && stage === "override") submitClock(supervisorPin);
+    else if (mode === "clock" && stage === "override") {
+      if (isStaleFix) submitClock(supervisorPin);
+      else setStage("override_reason");
+    }
     else if (mode === "return" && stage === "pin") submitReturn();
     else if (mode === "relieve" && stage === "relieve_supervisor") setStage("relieve_guard");
     else if (mode === "relieve" && stage === "relieve_guard") submitRelieve();
@@ -480,6 +497,8 @@ function ClockScreen() {
           }}
           onSkip={() => submitClock()}
         />
+      ) : mode === "clock" && stage === "override_reason" ? (
+        <ReasonPicker onSelect={(reason) => submitClock(supervisorPin, reason)} onCancel={goMenu} />
       ) : (
         <PinScreen
           mode={mode}
@@ -496,6 +515,36 @@ function ClockScreen() {
         />
       )}
     </main>
+  );
+}
+
+const OVERRIDE_REASONS = [
+  "Covering for absent/sick guard",
+  "Emergency reassignment",
+  "Schedule change",
+  "Other",
+];
+
+function ReasonPicker({ onSelect, onCancel }: { onSelect: (reason: string) => void; onCancel: () => void }) {
+  return (
+    <div className="flex flex-col items-center">
+      <h1 className="text-text-primary text-lg mb-1">Why the override?</h1>
+      <p className="text-text-secondary text-sm mb-6">Helps make sense of the timesheet later</p>
+      <div className="w-72 space-y-3">
+        {OVERRIDE_REASONS.map((reason) => (
+          <button
+            key={reason}
+            onClick={() => onSelect(reason)}
+            className="w-full py-4 rounded-lg bg-surface border border-border text-text-primary hover:bg-surfaceRaised"
+          >
+            {reason}
+          </button>
+        ))}
+      </div>
+      <button onClick={onCancel} className="mt-8 text-text-muted text-xs underline">
+        Cancel
+      </button>
+    </div>
   );
 }
 
