@@ -35,7 +35,7 @@ export default function SitesPage() {
   async function refreshEntries() {
     const { data } = await supabase
       .from("time_entries")
-      .select("site_id, guards(full_name, role)")
+      .select("site_id, guards!guard_id(full_name, role)")
       .is("clock_out", null);
     setOpenEntries((data as unknown as OpenEntry[]) || []);
   }
