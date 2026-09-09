@@ -170,7 +170,7 @@ export default function TimesheetsPage() {
       const { data: entries, error: entryErr } = await supabase
         .from("time_entries")
         .select(
-          "guard_id, clock_in, clock_out, rounded_minutes, is_late, late_minutes, is_early_leave, early_minutes, is_override, override_reason, guards(full_name), sites(name)"
+          "guard_id, clock_in, clock_out, rounded_minutes, is_late, late_minutes, is_early_leave, early_minutes, is_override, override_reason, guards!guard_id(full_name), sites(name)"
         )
         .gte("clock_in", rangeStart)
         .lte("clock_in", rangeEnd)
