@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 const supabase = createClient();
 
 type Absence = { id: string; guards: { full_name: string } | null; sites: { name: string } | null; shift_date: string; scheduled_start: string };
-type Override = { id: string; clock_in: string; guards: { full_name: string } | null; sites: { name: string } | null; authorized_by_guard?: { full_name: string } | null };
+type Override = { id: string; clock_in: string; override_reason: string | null; guards: { full_name: string } | null; sites: { name: string } | null; authorized_by_guard?: { full_name: string } | null };
 type Panic = { id: string; triggered_at: string; acknowledged: boolean; sites: { name: string } | null };
 
 export default function AlertsPage() {
@@ -29,7 +29,7 @@ export default function AlertsPage() {
 
     const { data: entries } = await supabase
       .from("time_entries")
-      .select("id, guard_id, clock_in, is_override, guards(full_name), sites(name)")
+      .select("id, guard_id, clock_in, is_override, override_reason, guards(full_name), sites(name)")
       .gte("clock_in", `${today}T00:00:00`);
 
     const clockedInIds = new Set((entries || []).map((e: any) => e.guard_id));
@@ -116,6 +116,7 @@ export default function AlertsPage() {
               <div className="font-bold text-[0.86rem] text-text-primary">{o.guards?.full_name ?? "Guard"}</div>
               <div className="text-text-secondary text-xs">
                 {o.sites?.name} · {new Date(o.clock_in).toLocaleTimeString()}
+                {o.override_reason ? ` · ${o.override_reason}` : ""}
               </div>
             </div>
           ))
