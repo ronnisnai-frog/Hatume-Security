@@ -170,7 +170,7 @@ export default function TimesheetsPage() {
       const { data: entries, error: entryErr } = await supabase
         .from("time_entries")
         .select(
-          "guard_id, clock_in, clock_out, rounded_minutes, is_late, late_minutes, is_early_leave, early_minutes, is_override, guards(full_name), sites(name)"
+          "guard_id, clock_in, clock_out, rounded_minutes, is_late, late_minutes, is_early_leave, early_minutes, is_override, override_reason, guards(full_name), sites(name)"
         )
         .gte("clock_in", rangeStart)
         .lte("clock_in", rangeEnd)
@@ -255,6 +255,7 @@ export default function TimesheetsPage() {
         Late: e.is_late ? `${e.late_minutes}m` : "",
         "Early Leave": e.is_early_leave ? `${e.early_minutes}m` : "",
         Override: e.is_override ? "Yes" : "",
+        "Override Reason": e.override_reason || "",
       }));
 
       const absenceRows = absences.map((a: any) => ({
