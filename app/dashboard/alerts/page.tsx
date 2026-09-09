@@ -29,7 +29,7 @@ export default function AlertsPage() {
 
     const { data: entries } = await supabase
       .from("time_entries")
-      .select("id, guard_id, clock_in, is_override, override_reason, guards(full_name), sites(name)")
+      .select("id, guard_id, clock_in, is_override, override_reason, guards!guard_id(full_name), sites(name)")
       .gte("clock_in", `${today}T00:00:00`);
 
     const clockedInIds = new Set((entries || []).map((e: any) => e.guard_id));
