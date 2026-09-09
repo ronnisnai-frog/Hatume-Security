@@ -95,7 +95,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .eq("shift_date", today);
     const { data: entries } = await supabase
       .from("time_entries")
-      .select("guard_id, is_override, guards(full_name), sites(name)")
+      .select("guard_id, is_override, guards!guard_id(full_name), sites(name)")
       .gte("clock_in", `${today}T00:00:00`);
     const { data: panics } = await supabase
       .from("panic_alerts")
