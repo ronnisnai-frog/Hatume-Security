@@ -58,7 +58,7 @@ export default function DashboardOverview() {
       supabase
         .from("time_entries")
         .select(
-          "id, clock_in, clock_out, is_late, late_minutes, is_early_leave, early_minutes, is_override, rounded_minutes, guards(full_name), sites(name)"
+          "id, clock_in, clock_out, is_late, late_minutes, is_early_leave, early_minutes, is_override, rounded_minutes, guards!guard_id(full_name), sites(name)"
         )
         .gte("clock_in", `${today}T00:00:00`)
         .order("clock_in", { ascending: false }),
