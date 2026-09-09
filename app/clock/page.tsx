@@ -304,7 +304,9 @@ function ClockScreen() {
       return;
     }
     if (data.requires_move_approval) {
-      setOverrideReason(`Already clocked in at ${data.current_site_name} — supervisor must approve the move`);
+      setOverrideReason(
+        `${data.guard_name} is still clocked in at ${data.current_site_name}. If you meant to clock them OUT, go back and choose "${data.current_site_name}" instead. To actually move them here, a supervisor must approve.`
+      );
       setIsStaleFix(false);
       setStage("override");
       return;
