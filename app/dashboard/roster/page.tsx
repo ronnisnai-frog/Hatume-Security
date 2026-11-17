@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Upload, FileDown, CalendarRange, AlertCircle, CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
+import { addDays, buildRosterWorkbook, isGridSheet, parseRosterGrid, pngToday, type GuardLite } from "@/lib/rosterGrid";
 
 const supabase = createClient();
 
@@ -23,6 +24,7 @@ type RowError = { rowNum: number; message: string };
 
 export default function RosterPage() {
   const [guards, setGuards] = useState<Guard[]>([]);
+  const [allGuards, setAllGuards] = useState<GuardLite[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
   const [currentRange, setCurrentRange] = useState<{ min: string; max: string; count: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +42,8 @@ export default function RosterPage() {
     const { data: siteData } = await supabase.from("sites").select("id, name").order("name");
     const { data: shiftDates } = await supabase.from("shifts").select("shift_date").order("shift_date");
 
+    const { data: everyone } = await supabase.from("guards").select("id, full_name, active");
+    setAllGuards(everyone || []);
     setGuards(guardData || []);
     setSites(siteData || []);
 
@@ -55,25 +59,23 @@ export default function RosterPage() {
     setLoading(false);
   }
 
-  function downloadTemplate() {
-    const sampleRows = [
-      { Guard: guards[0]?.full_name || "Tame Yari", Site: sites[0]?.name || "Main Gate (Gordons)", Date: "2026-09-25", "Start Time": "06:00", "End Time": "18:00" },
-      { Guard: guards[1]?.full_name || "Desmond Nimika", Site: sites[0]?.name || "Main Gate (Gordons)", Date: "2026-09-25", "Start Time": "18:00", "End Time": "06:00" },
-    ];
-
-    const wb = XLSX.utils.book_new();
-    const wsMain = XLSX.utils.json_to_sheet(sampleRows);
-    XLSX.utils.book_append_sheet(wb, wsMain, "Roster");
-
-    const referenceRows: { Guards: string; Sites: string }[] = [];
-    const maxLen = Math.max(guards.length, sites.length);
-    for (let i = 0; i < maxLen; i++) {
-      referenceRows.push({ Guards: guards[i]?.full_name || "", Sites: sites[i]?.name || "" });
+  async function downloadRoster(blank: boolean) {
+    setErrors([]);
+    setSuccessMsg(null);
+    const from = pngToday();
+    const until = addDays(from, 13);
+    let shifts = null;
+    if (!blank && currentRange) {
+      // Use the most recent 7 days of the live schedule as the weekly pattern
+      const { data } = await supabase
+        .from("shifts")
+        .select("guard_id, site_id, shift_date, scheduled_start, scheduled_end")
+        .gte("shift_date", addDays(currentRange.max, -6))
+        .lte("shift_date", currentRange.max);
+      shifts = data || [];
     }
-    const wsRef = XLSX.utils.json_to_sheet(referenceRows);
-    XLSX.utils.book_append_sheet(wb, wsRef, "Valid Names (reference)");
-
-    XLSX.writeFile(wb, "Hatume-Security-Roster-Template.xlsx");
+    const wb = buildRosterWorkbook({ sites, guards: allGuards, shifts, from, until });
+    XLSX.writeFile(wb, blank ? "Hatume-Security-Roster-Blank.xlsx" : "Hatume-Security-Roster.xlsx");
   }
 
   function parseTimeToDate(dateStr: string, timeStr: string): Date | null {
@@ -82,9 +84,7 @@ export default function RosterPage() {
     const hh = parseInt(m[1], 10);
     const mm = parseInt(m[2], 10);
     if (hh > 23 || mm > 59) return null;
-    const d = new Date(`${dateStr}T00:00:00+10:00`);
-    d.setHours(hh, mm, 0, 0);
-    return d;
+    return new Date(`${dateStr}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00+10:00`);
   }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -98,6 +98,30 @@ export default function RosterPage() {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
       const sheet = wb.Sheets[wb.SheetNames[0]];
+
+      // New weekly-grid layout (same look as the printed roster)
+      const grid: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
+      if (isGridSheet(grid)) {
+        const res = parseRosterGrid(grid, guards, sites);
+        if (res.errors.length > 0) {
+          setErrors(res.errors);
+          setUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          return;
+        }
+        await supabase.from("shifts").delete().gte("shift_date", res.from).lte("shift_date", res.until);
+        for (let i = 0; i < res.shifts.length; i += 200) {
+          const { error: insErr } = await supabase.from("shifts").insert(res.shifts.slice(i, i + 200));
+          if (insErr) throw insErr;
+        }
+        setSuccessMsg(`Uploaded ${res.shifts.length} shifts covering ${res.from} to ${res.until}. This is now the live schedule for that range.`);
+        await load();
+        setUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
+      // Older flat-table layout (Guard / Site / Date / Start Time / End Time)
       const rows: any[] = XLSX.utils.sheet_to_json(sheet, { raw: false });
 
       if (rows.length === 0) {
@@ -196,8 +220,8 @@ export default function RosterPage() {
     <div>
       <h1 className="text-[1.5rem] font-extrabold text-text-primary">Roster</h1>
       <p className="text-text-secondary text-sm mb-[18px]">
-        Download a template, fill it in for the new period, and upload it here — this becomes the live schedule
-        guards clock against.
+        Download the roster, change the names in the weekly grid, set the "Effective from" and "Until" dates at the
+        top, and upload it here — this becomes the live schedule guards clock against.
       </p>
 
       <div className="bg-surface border border-border rounded-[14px] p-5 mb-4 max-w-lg shadow-[0_2px_6px_rgba(0,0,0,0.25),0_8px_18px_rgba(0,0,0,0.35)] animate-fade-up">
@@ -219,11 +243,19 @@ export default function RosterPage() {
         style={{ animationDelay: "80ms" }}
       >
         <button
-          onClick={downloadTemplate}
+          onClick={() => downloadRoster(false)}
+          disabled={!currentRange}
+          className="w-full flex items-center justify-center gap-2 border border-border text-text-primary font-bold text-sm rounded-lg py-2.5 hover:bg-surfaceRaised transition mb-3 disabled:opacity-50"
+        >
+          <FileDown size={16} />
+          Download current roster
+        </button>
+        <button
+          onClick={() => downloadRoster(true)}
           className="w-full flex items-center justify-center gap-2 border border-border text-text-primary font-bold text-sm rounded-lg py-2.5 hover:bg-surfaceRaised transition mb-3"
         >
           <FileDown size={16} />
-          Download roster template
+          Download blank roster
         </button>
 
         <label className="w-full flex items-center justify-center gap-2 bg-accent text-bg font-bold text-sm rounded-lg py-2.5 hover:opacity-90 transition cursor-pointer">
@@ -233,8 +265,9 @@ export default function RosterPage() {
         </label>
 
         <p className="text-text-muted text-xs mt-3">
-          Uploading replaces any existing schedule for the exact date range covered by your file — dates outside
-          that range are untouched.
+          The weekly grid repeats on each matching weekday between "Effective from" and "Until". Uploading replaces
+          any existing schedule inside that date range — dates outside it are untouched. Write guards as "Hubert. N"
+          or their full name.
         </p>
 
         {successMsg && (
