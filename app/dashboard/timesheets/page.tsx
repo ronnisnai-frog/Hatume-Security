@@ -161,10 +161,9 @@ export default function TimesheetsPage() {
       const rangeStart = `${startDate}T00:00:00`;
       const rangeEnd = `${rangeEndDate}T23:59:59`;
 
-      const { data: guards, error: guardErr } = await supabase
+      const { data: allGuards, error: guardErr } = await supabase
         .from("guards")
-        .select("id, full_name, role, pay_tier")
-        .eq("active", true);
+        .select("id, full_name, role, pay_tier, active");
       if (guardErr) throw guardErr;
 
       const { data: entries, error: entryErr } = await supabase
@@ -176,6 +175,10 @@ export default function TimesheetsPage() {
         .lte("clock_in", rangeEnd)
         .order("clock_in", { ascending: true });
       if (entryErr) throw entryErr;
+
+      // Active guards, plus anyone deactivated who still has clock records in this fortnight
+      const idsWithEntries = new Set((entries || []).map((e: any) => e.guard_id));
+      const guards = (allGuards || []).filter((g) => g.active || idsWithEntries.has(g.id));
 
       const { data: shifts, error: shiftErr } = await supabase
         .from("shifts")

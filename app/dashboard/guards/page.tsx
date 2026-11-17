@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Settings2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 const supabase = createClient();
@@ -81,8 +82,18 @@ export default function GuardsPage() {
 
   return (
     <div>
-      <h1 className="text-[1.5rem] font-extrabold text-text-primary">Guards</h1>
-      <p className="text-text-secondary text-sm mb-[18px]">Your security personnel and their current status.</p>
+      <div className="flex items-start justify-between gap-3 mb-[18px]">
+        <div>
+          <h1 className="text-[1.5rem] font-extrabold text-text-primary">Guards</h1>
+          <p className="text-text-secondary text-sm">Your security personnel and their current status.</p>
+        </div>
+        <Link
+          href="/dashboard/guards/manage"
+          className="flex items-center gap-2 border border-border bg-surface text-text-primary font-bold text-sm rounded-lg px-3.5 py-2 hover:border-accent transition flex-none"
+        >
+          <Settings2 size={16} /> Manage guards
+        </Link>
+      </div>
 
       <div className="flex flex-wrap gap-[18px]">
         {guards.map((g, i) => {
