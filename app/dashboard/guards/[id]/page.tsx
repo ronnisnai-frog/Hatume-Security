@@ -25,6 +25,7 @@ type Entry = {
 function tierLabel(tier: string | null) {
   if (tier === "old_guard") return "Guard (old)";
   if (tier === "new_guard") return "Guard (new)";
+  if (tier === "temp_guard") return "Guard (temp)";
   if (tier === "supervisor") return "Supervisor";
   return "Guard";
 }

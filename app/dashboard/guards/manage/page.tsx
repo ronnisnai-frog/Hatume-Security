@@ -16,17 +16,19 @@ type Guard = {
   active: boolean;
 };
 
-const TIER_ORDER: Record<string, number> = { supervisor: 0, old_guard: 1, new_guard: 2 };
+const TIER_ORDER: Record<string, number> = { supervisor: 0, old_guard: 1, new_guard: 2, temp_guard: 3 };
 
 const TIER_OPTIONS = [
   { value: "new_guard", label: "Guard (new) — K288" },
   { value: "old_guard", label: "Guard (old) — K320" },
+  { value: "temp_guard", label: "Guard (temp) — K288" },
   { value: "supervisor", label: "Supervisor — K340" },
 ];
 
 function tierLabel(tier: string | null) {
   if (tier === "old_guard") return "Guard (old)";
   if (tier === "new_guard") return "Guard (new)";
+  if (tier === "temp_guard") return "Guard (temp)";
   if (tier === "supervisor") return "Supervisor";
   return "Guard";
 }
@@ -62,8 +64,8 @@ export default function ManageGuardsPage() {
     if (err) setError(err.message);
     const sorted = (data || []).sort((a: Guard, b: Guard) => {
       if (a.active !== b.active) return a.active ? -1 : 1;
-      const ta = TIER_ORDER[a.pay_tier || "new_guard"] ?? 3;
-      const tb = TIER_ORDER[b.pay_tier || "new_guard"] ?? 3;
+      const ta = TIER_ORDER[a.pay_tier || "new_guard"] ?? 4;
+      const tb = TIER_ORDER[b.pay_tier || "new_guard"] ?? 4;
       if (ta !== tb) return ta - tb;
       return a.full_name.localeCompare(b.full_name);
     });

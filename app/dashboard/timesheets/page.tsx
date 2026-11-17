@@ -9,6 +9,7 @@ const supabase = createClient();
 
 const BASE_RATE: Record<string, number> = {
   new_guard: 288,
+  temp_guard: 288,
   old_guard: 320,
   supervisor: 340,
 };
@@ -39,6 +40,7 @@ function formatRange(start: Date, end: Date): string {
 function tierLabel(tier: string | null): string {
   if (tier === "old_guard") return "Guard (old)";
   if (tier === "new_guard") return "Guard (new)";
+  if (tier === "temp_guard") return "Guard (temp)";
   if (tier === "supervisor") return "Supervisor";
   return "Guard";
 }

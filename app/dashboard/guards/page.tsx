@@ -19,6 +19,7 @@ const TIER_ORDER: Record<string, number> = {
   supervisor: 0,
   old_guard: 1,
   new_guard: 2,
+  temp_guard: 3,
 };
 
 function initialsFor(name: string) {
@@ -29,6 +30,7 @@ function initialsFor(name: string) {
 function tierLabel(tier: string | null) {
   if (tier === "old_guard") return "Guard (old)";
   if (tier === "new_guard") return "Guard (new)";
+  if (tier === "temp_guard") return "Guard (temp)";
   if (tier === "supervisor") return "Supervisor";
   return "Guard";
 }
@@ -56,8 +58,8 @@ export default function GuardsPage() {
       .eq("active", true);
 
     const sorted = (guardData || []).sort((a, b) => {
-      const tierA = TIER_ORDER[a.pay_tier || "new_guard"] ?? 3;
-      const tierB = TIER_ORDER[b.pay_tier || "new_guard"] ?? 3;
+      const tierA = TIER_ORDER[a.pay_tier || "new_guard"] ?? 4;
+      const tierB = TIER_ORDER[b.pay_tier || "new_guard"] ?? 4;
       if (tierA !== tierB) return tierA - tierB;
       return a.full_name.localeCompare(b.full_name);
     });
